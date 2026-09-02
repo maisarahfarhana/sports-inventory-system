@@ -1,16 +1,31 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
+
+
 import 'sports_inventory_screen.dart';
 import 'database_helper.dart';
 import 'my_bookings_screen.dart';
 import 'profile_screen.dart';
 import 'staff_all_bookings_screen.dart';
 import 'weather_screen.dart';
-import 'dart:io'; // Wajib ada untuk 'File'
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
+
 const Color lightBlue = Color(0xFF87CEFA);
 
-void main() => runApp(const MyApp());
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Inisialisasi database untuk pelayar web
+  if (kIsWeb) {
+    databaseFactory = databaseFactoryFfiWeb;
+  }
+
+  runApp(const MyApp());
+}
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -56,7 +71,6 @@ class _LoginPageState extends State<LoginPage> {
     }
 
     // --- LOGIK BARU: Cari dalam database berdasarkan ID/Username ---
-    // Pastikan loginUser dalam DatabaseHelper boleh terima Staff ID juga
     bool isValid = await _dbHelper.loginUser(inputId, password);
 
     if (isValid) {
@@ -108,15 +122,14 @@ class _LoginPageState extends State<LoginPage> {
               const SizedBox(height: 25),
 
               // --- INPUT FIELD (Dinamik mengikut Role) ---
-            TextField(
-              controller: _idController,
-              decoration: InputDecoration(
-                prefixIcon: Icon(_selectedRole == 'Staff' ? Icons.badge : Icons.person),
-                // Kalau pilih Staff, keluar "Staff ID". Kalau Student, keluar "Username".
-                labelText: _selectedRole == 'Staff' ? 'Username' : 'Username',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              TextField(
+                controller: _idController,
+                decoration: InputDecoration(
+                  prefixIcon: Icon(_selectedRole == 'Staff' ? Icons.badge : Icons.person),
+                  labelText: 'Username',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
               ),
-            ),
               const SizedBox(height: 16),
               TextField(
                   controller: _passwordController,
@@ -194,7 +207,6 @@ class _SignupPageState extends State<SignupPage> {
   final DatabaseHelper _dbHelper = DatabaseHelper();
 
   void _register() async {
-    // Validasi asas
     if (_userController.text.isEmpty || _passController.text.isEmpty || _idController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Sila penuhkan Username, Password dan ID anda!')),
@@ -238,7 +250,6 @@ class _SignupPageState extends State<SignupPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF7F7FB),
-      // --- HEADER BIRU KONSISTEN (Task 4) ---
       appBar: AppBar(
         title: const Text('Sign Up',
             style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
@@ -257,7 +268,6 @@ class _SignupPageState extends State<SignupPage> {
             const Icon(Icons.person_add_alt_1, size: 70, color: lightBlue),
             const SizedBox(height: 20),
 
-            // --- ROLE SELECTION (INTERAKTIF) ---
             const Text("Select Your Role", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
             const SizedBox(height: 10),
             Row(
@@ -271,13 +281,11 @@ class _SignupPageState extends State<SignupPage> {
 
             const SizedBox(height: 30),
 
-            // --- INPUT FIELDS ---
             _buildTextField(_userController, 'Username', Icons.person_outline),
             const SizedBox(height: 16),
             _buildTextField(_passController, 'Password', Icons.lock_outline, isObscure: true),
             const SizedBox(height: 16),
 
-            // Dinamik mengikut Role
             if (_selectedRole == 'Staff') ...[
               _buildTextField(_idController, 'Staff ID', Icons.vpn_key_outlined),
               const SizedBox(height: 16),
@@ -292,7 +300,6 @@ class _SignupPageState extends State<SignupPage> {
 
             const SizedBox(height: 40),
 
-            // --- BUTTON REGISTER ---
             SizedBox(
               width: double.infinity,
               height: 55,
@@ -313,7 +320,6 @@ class _SignupPageState extends State<SignupPage> {
     );
   }
 
-  // Widget untuk pilihan Role yang interaktif
   Widget _roleChoice(String role, IconData icon) {
     bool isSelected = _selectedRole == role;
     return GestureDetector(
@@ -338,7 +344,6 @@ class _SignupPageState extends State<SignupPage> {
     );
   }
 
-  // Helper untuk bina TextField dengan gaya seragam
   Widget _buildTextField(TextEditingController controller, String label, IconData icon, {bool isObscure = false}) {
     return TextField(
       controller: controller,
@@ -370,46 +375,38 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  File? _drawerImage; // Simpan gambar profil user
+  File? _drawerImage;
 
   @override
   void initState() {
     super.initState();
-    _loadDrawerImage(); // Muat gambar setiap kali skrin ini dibina
+    _loadDrawerImage();
   }
 
-  // --- FUNGSI LOAD GAMBAR UNIK UNTUK SETIAP AKAUN ---
   Future<void> _loadDrawerImage() async {
     final prefs = await SharedPreferences.getInstance();
-    // Menggunakan username sebagai kunci unik
     String userKey = 'profile_path_${widget.userData['username']}';
     final String? path = prefs.getString(userKey);
 
     if (path != null && path.isNotEmpty) {
       setState(() {
-        _drawerImage = File(path); // Update gambar profil
+        _drawerImage = File(path);
       });
     } else {
       setState(() {
-        _drawerImage = null; // Default ikon jika tiada gambar
+        _drawerImage = null;
       });
     }
   }
 
-  // --- FUNGSI WHATSAPP (DEVICE FEATURE) ---
   Future<void> _launchWhatsApp() async {
     final String phoneNumber = "601137458216";
     final String message = "Hi Admin, i am ${widget.userData['username']} (${widget.userData['role']}). i want to know regarding to sports equipment.";
-
-    // Link universal yang akan buka app jika ada, atau web jika tiada app
     final Uri url = Uri.parse("https://wa.me/$phoneNumber?text=${Uri.encodeComponent(message)}");
 
     if (await canLaunchUrl(url)) {
-      // Gunakan inAppWebView jika mahu buka dalam app,
-      // atau externalApplication untuk buka Safari/WhatsApp terus
       await launchUrl(url, mode: LaunchMode.externalApplication);
     } else {
-      // Kalau masih gagal (jarang berlaku pada real phone)
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Could not launch WhatsApp link')),
       );
@@ -464,7 +461,6 @@ class _MainScreenState extends State<MainScreen> {
               ),
               currentAccountPicture: CircleAvatar(
                 backgroundColor: Colors.white,
-                // PAPAR GAMBAR DARI STORAGE
                 backgroundImage: _drawerImage != null ? FileImage(_drawerImage!) : null,
                 child: _drawerImage == null
                     ? const Icon(Icons.person, size: 40, color: lightBlue)
@@ -481,7 +477,7 @@ class _MainScreenState extends State<MainScreen> {
                   MaterialPageRoute(
                     builder: (_) => ProfileScreen(userData: widget.userData),
                   ),
-                ).then((_) => _loadDrawerImage()); // REFRESH GAMBAR SELEPAS TUTUP PROFILE
+                ).then((_) => _loadDrawerImage());
               },
             ),
             ListTile(
@@ -500,21 +496,20 @@ class _MainScreenState extends State<MainScreen> {
                 leading: const Icon(Icons.list_alt),
                 title: const Text('All Bookings'),
                 onTap: () {
-                  Navigator.pop(context); // Tutup drawer dulu
+                  Navigator.pop(context);
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const StaffAllBookingsScreen()),
                   );
                 },
               ),
-            // --- TAMBAH BUTANG WHATSAPP ADMIN DI SINI ---
             ListTile(
               leading: const Icon(Icons.chat, color: Colors.green),
               title: const Text('WhatsApp Admin'),
               subtitle: const Text('Direct Support'),
               onTap: () {
                 Navigator.pop(context);
-                _launchWhatsApp(); // Panggil fungsi WhatsApp
+                _launchWhatsApp();
               },
             ),
             const Divider(),
@@ -619,6 +614,7 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 }
+
 class _HeroBanner extends StatelessWidget {
   final VoidCallback onStart;
   const _HeroBanner({required this.onStart});
@@ -631,17 +627,14 @@ class _HeroBanner extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         child: Stack(
           children: [
-            // Banner image
             SizedBox(
               height: 200,
               width: double.infinity,
               child: Image.asset(
-                'assets/images/sportss.jpg', // tukar kalau nama lain
+                'assets/images/sportss.jpg',
                 fit: BoxFit.cover,
               ),
             ),
-
-            // Dark overlay
             Container(
               height: 200,
               decoration: BoxDecoration(
@@ -656,8 +649,6 @@ class _HeroBanner extends StatelessWidget {
                 ),
               ),
             ),
-
-            // Text & button
             Positioned(
               left: 16,
               right: 16,
@@ -701,8 +692,6 @@ class _HeroBanner extends StatelessWidget {
                 ],
               ),
             ),
-
-            // dots indicator (fake)
             Positioned(
               bottom: 10,
               left: 0,
@@ -746,33 +735,6 @@ class _ScoreStrip extends StatelessWidget {
           ),
         ],
       ),
-
-    );
-  }
-}
-
-class _ScoreBox extends StatelessWidget {
-  final String team;
-  final String score;
-  const _ScoreBox({required this.team, required this.score});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Text(team, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-        const SizedBox(width: 10),
-        Container(
-          width: 28,
-          height: 22,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: const Color(0xFFF1F1F5),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Text(score, style: const TextStyle(fontWeight: FontWeight.bold)),
-        ),
-      ],
     );
   }
 }
