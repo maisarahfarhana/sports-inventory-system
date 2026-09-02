@@ -19,7 +19,7 @@ const Color lightBlue = Color(0xFF87CEFA);
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Inisialisasi database untuk pelayar web
+  // TAMBAHKAN BLOK INI UNTUK PELAYAR WEB:
   if (kIsWeb) {
     databaseFactory = databaseFactoryFfiWeb;
   }
