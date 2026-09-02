@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'package:path/path.dart';
 
 class DatabaseHelper {
@@ -15,49 +17,62 @@ class DatabaseHelper {
   }
 
   Future<Database> _initDatabase() async {
-    // Guna v7 untuk pastikan table baru 'bookings' dicipta dengan betul
-    String path = join(await getDatabasesPath(), 'kpm_sports_v7.db');
-    return await openDatabase(
-      path,
-      version: 1,
-      onCreate: (db, version) async {
-        // Table Users
-        await db.execute('''
-          CREATE TABLE users(
-            username TEXT PRIMARY KEY, 
-            password TEXT, 
-            role TEXT,
-            email TEXT,
-            staffId TEXT,
-            studentId TEXT,
-            course TEXT
-          )
-        ''');
-        await db.execute('''
-  CREATE TABLE inventory(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    equipment_name TEXT,
-    sport_type TEXT,
-    quantity INTEGER,
-    image_path TEXT
-  )
-''');
+    DatabaseFactory factory;
 
-        // Table Bookings
-        await db.execute('''
-          CREATE TABLE bookings(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT,
-            sport TEXT,
-            equipment_name TEXT,
-            student_name TEXT,
-            class_name TEXT,
-            date TEXT,
-            duration TEXT,
-            status TEXT
-          )
-        ''');
-      },
+    // Tetapkan factory mengikut platform (Web atau Mobile/Desktop)
+    if (kIsWeb) {
+      factory = databaseFactoryFfiWeb;
+    } else {
+      factory = databaseFactory;
+    }
+
+    String path = join(await factory.getDatabasesPath(), 'kpm_sports_v7.db');
+
+    return await factory.openDatabase(
+      path,
+      options: OpenDatabaseOptions(
+        version: 1,
+        onCreate: (db, version) async {
+          // Table Users
+          await db.execute('''
+            CREATE TABLE users(
+              username TEXT PRIMARY KEY, 
+              password TEXT, 
+              role TEXT,
+              email TEXT,
+              staffId TEXT,
+              studentId TEXT,
+              course TEXT
+            )
+          ''');
+
+          // Table Inventory
+          await db.execute('''
+            CREATE TABLE inventory(
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              equipment_name TEXT,
+              sport_type TEXT,
+              quantity INTEGER,
+              image_path TEXT
+            )
+          ''');
+
+          // Table Bookings
+          await db.execute('''
+            CREATE TABLE bookings(
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              username TEXT,
+              sport TEXT,
+              equipment_name TEXT,
+              student_name TEXT,
+              class_name TEXT,
+              date TEXT,
+              duration TEXT,
+              status TEXT
+            )
+          ''');
+        },
+      ),
     );
   }
 
@@ -76,24 +91,28 @@ class DatabaseHelper {
     );
     return maps.isNotEmpty ? maps.first : null;
   }
+
   Future<int> addEquipment(Map<String, dynamic> data) async {
     final db = await database;
     return await db.insert('inventory', data);
   }
+
   Future<int> updateBooking(int id, Map<String, dynamic> data) async {
-    final db = await database; // Ensure this matches your database getter name
+    final db = await database;
     return await db.update(
-      'bookings', // Ensure this matches your table name
+      'bookings',
       data,
       where: 'id = ?',
       whereArgs: [id],
     );
   }
-// Ambil semua alatan untuk dipaparkan dalam senarai
+
+  // Ambil semua alatan untuk dipaparkan dalam senarai
   Future<List<Map<String, dynamic>>> getAllEquipment() async {
     final db = await database;
     return await db.query('inventory', orderBy: 'equipment_name ASC');
   }
+
   Future<bool> loginUser(String username, String password) async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
@@ -134,4 +153,4 @@ class DatabaseHelper {
     final db = await database;
     return await db.delete('bookings', where: 'id = ?', whereArgs: [id]);
   }
-} // <--- Kurungan penutup yang hilang tadi
+}
